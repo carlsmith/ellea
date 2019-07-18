@@ -13,9 +13,9 @@ const snapRadius = 16;
 const gridColumns = 17;
 const gridRows = 11;
 const gridOffsetX = 112;
-const gridOffsetY = 123;
+const gridOffsetY = 234;
 const pointOffsetX = 128;
-const pointOffsetY = 147;
+const pointOffsetY = 258;
 const gridColumnWidth = 32;
 const gridRowHeight = 55.5;
 
@@ -58,7 +58,7 @@ const put = console.log;
 
 const square = x => x * x;
 
-const {floor, random } = Math;
+const {floor, random} = Math;
 
 const [squareRoot, absolute] = [Math.sqrt, Math.abs];
 
@@ -135,14 +135,14 @@ const tileSelector = function() {
     to generate valid boards at random. */
 
     const layout = [
-        [null, null, null, null, null, null, null, null],
-        [null, null, "northWest", false, "southWest", false],
-        [null, null, false, true, true, true, "southWest"],
-        [null, "north", true, true, true, true, false],
-        [null, false, true, true, true, true, true, "south"],
-        [null, "north", true, true, true, true, false],
-        [null, null, false, true, true, true, "southEast"],
-        [null, null,  "northEast", false,  "southEast", false],
+        [null, null, null, null, null, null, null, null, null],
+        [null, null, null, "northWest", false, "southWest", false],
+        [null, null, null, false, true, true, true, "southWest"],
+        [null, null, "north", true, true, true, true, false],
+        [null, null, false, true, true, true, true, true, "south"],
+        [null, null, "north", true, true, true, true, false],
+        [null, null, null, false, true, true, true, "southEast"],
+        [null, null, null,  "northEast", false,  "southEast", false],
     ];
 
     let landIndex = 0;
