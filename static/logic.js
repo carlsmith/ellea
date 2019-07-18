@@ -12,10 +12,10 @@ const boardHeight = 1080;
 const snapRadius = 16;
 const gridRows = 19;
 const gridColumns = 59;
-const gridOffsetX = 16;
-const gridOffsetY = 12;
-const pointOffsetX = 32;
-const pointOffsetY = 36;
+const gridOffsetX = 112; // SHRINK THE GRID (it still goes beyond the edges of the board)
+const gridOffsetY = 123;
+const pointOffsetX = 128;
+const pointOffsetY = 147;
 const gridColumnWidth = 32;
 const gridRowHeight = 55.5;
 
@@ -48,20 +48,38 @@ const portTiles = [
     "Open", "Open", "Open", "Open"
 ];
 
+const gridColumnBounds = [
+    {lower:1, upper: 9}, {lower:0, upper: 10}, {lower:1, upper: 9},
+    {lower:2, upper: 8}, {lower:1, upper: 9},  {lower:2, upper: 8},
+    {lower:3, upper: 7}, {lower:2, upper: 8},  {lower:3, upper: 7},
+];
+
 const put = console.log;
 
 const square = x => x * x;
 
 const {floor, random } = Math;
 
-const squareRoot = Math.sqrt;
+const [squareRoot, absolute] = [Math.sqrt, Math.abs];
 
-const isHextile = function(point) {
+const classifyPoint= function(column, row) {
 
-    /* This helper returns `true` if its only arg (a `point` hash) is in
-    the center of a hextile, and `false` if the point is at a vertex. */
+    /* This helper takes two args that specify the `column` and `row` for
+    a given point in the grid. The function classifies the point as one of
+    `margin`, `center` or `vertex`, and returns the corresponding string.
+    Note that `margin` applies to any point outside of the active part of
+    the board, `center` to those points that are in the centers of hex-
+    tiles, and `vertex` to points that are on vertices. */
 
-    return (point.row % 2 && point.column % 6 == 5) || (point.column % 6 == 2);
+    if (column > 16 || row > 10) return "margin";
+
+    const bounds = gridColumnBounds[absolute(column - 8)];
+
+    if (row < bounds.lower || row > bounds.upper) return "margin";
+
+    if ((row % 2 && column % 6 === 2) || (column % 6 === 5)) return "center";
+
+    return "vertex";
 };
 
 const shuffle = function(deck) {
@@ -101,7 +119,7 @@ const snapToGrid = function(mouse, grid) {
     const column = floor((mouse.x - gridOffsetX) / gridColumnWidth);
     const row = floor((mouse.y - gridOffsetY) / gridRowHeight);
 
-    if (column % 2 + row % 2 === 1) return undefined;
+    if (column % 2 + row % 2 !== 1) return undefined;
 
     try { point = grid[column][row] } catch { return undefined }
 
@@ -200,7 +218,7 @@ const setup = function() {
         for (let row = 0; row < gridRows; row++) grid[column].push({
             x: pointOffsetX + column * gridColumnWidth,
             y: pointOffsetY + row * gridRowHeight,
-            column, row
+            type: classifyPoint(column, row),
         });
     }
 
@@ -212,11 +230,11 @@ const setup = function() {
 
         graphics.clear();
 
-        if (point === undefined) return;
+        if (point === undefined || point.type === "margin") return;
 
-        const color = isHextile(point) ? 0xFF0000 : 0xFFFF00;
+        const color = {"center": 0xFF0000, "vertex": 0xFFFF00}[point.type];
 
-        graphics.beginFill(color)
+        graphics.beginFill(color);
         graphics.lineStyle(2, black);
         graphics.drawRect(point.x - 4, point.y - 4, 8, 8);
     });
