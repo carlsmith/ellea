@@ -1,5 +1,5 @@
-const hexRows = 11;
 const hexColumns = 22;
+const hexRows = 11;
 const hexOffsetX = 64;
 const hexOffsetY = 84;
 const hexColumnWidth = 96;
@@ -10,9 +10,9 @@ const boardWidth = 1920;
 const boardHeight = 1080;
 
 const snapRadius = 16;
-const gridRows = 19;
-const gridColumns = 59;
-const gridOffsetX = 112; // SHRINK THE GRID (it still goes beyond the edges of the board)
+const gridColumns = 17;
+const gridRows = 11;
+const gridOffsetX = 112;
 const gridOffsetY = 123;
 const pointOffsetX = 128;
 const pointOffsetY = 147;
@@ -70,8 +70,6 @@ const classifyPoint= function(column, row) {
     Note that `margin` applies to any point outside of the active part of
     the board, `center` to those points that are in the centers of hex-
     tiles, and `vertex` to points that are on vertices. */
-
-    if (column > 16 || row > 10) return "margin";
 
     const bounds = gridColumnBounds[absolute(column - 8)];
 
