@@ -19,6 +19,9 @@ const pointOffsetY = 36;
 const gridColumnWidth = 32;
 const gridRowHeight = 55.5;
 
+const red = 0xFF0000;
+const black = 0x000000;
+const yellow = 0xFFFF00;
 const backgroundBlue = 0x222233;
 
 const utils = PIXI.utils;
@@ -52,6 +55,14 @@ const square = x => x * x;
 const {floor, random } = Math;
 
 const squareRoot = Math.sqrt;
+
+const isHextile = function(point) {
+
+    /* This helper returns `true` if its only arg (a `point` hash) is in
+    the center of a hextile, and `false` if the point is at a vertex. */
+
+    return (point.row % 2 && point.column % 6 == 5) || (point.column % 6 == 2);
+};
 
 const shuffle = function(deck) {
 
@@ -188,7 +199,8 @@ const setup = function() {
 
         for (let row = 0; row < gridRows; row++) grid[column].push({
             x: pointOffsetX + column * gridColumnWidth,
-            y: pointOffsetY + row * gridRowHeight
+            y: pointOffsetY + row * gridRowHeight,
+            column, row
         });
     }
 
@@ -198,11 +210,14 @@ const setup = function() {
 
         const point = snapToGrid(event.data.global, grid);
 
-        if (point === undefined) return graphics.clear();
-
         graphics.clear();
-        graphics.beginFill(0xFF0000);
-        graphics.lineStyle(2, 0xFFFFFF);
+
+        if (point === undefined) return;
+
+        const color = isHextile(point) ? 0xFF0000 : 0xFFFF00;
+
+        graphics.beginFill(color)
+        graphics.lineStyle(2, black);
         graphics.drawRect(point.x - 4, point.y - 4, 8, 8);
     });
 };
