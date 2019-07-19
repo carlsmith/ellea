@@ -80,6 +80,36 @@ const classifyPoint= function(column, row) {
     return "vertex";
 };
 
+const blit = function(name, x, y, layer) {
+
+    /* This helper takes the `name` of a sprite, some pixel coordinates (`x`
+    and `y`) and a `layer` (a `PIXI.Container`). It creates a new sprite,
+    blits it into the `layer` at the given coordinates, then returns the
+    sprite object. */
+
+    const sprite = new Sprite(resources[name].texture);
+
+    sprite.position.set(x, y);
+    layer.addChild(sprite);
+
+    return sprite;
+};
+
+const plot = function(start, end, color, layer) {
+
+    /* This helper takes two `grid` points (the `start` and `end` points of
+    a line), a (hexidecimal RGB) `color` and a `layer` (a `PIXI.Container`).
+    It draws a line from the `start` point to the `end` point, in the given
+    color, to the given `layer`, then returns `undefined`. */
+
+    const line = new Graphics();
+
+    layer.addChild(line);
+    line.position.set(start.x, start.y);
+    line.lineStyle(4, color)
+    line.moveTo(0, 0).lineTo(end.x - start.x, end.y - start.y);
+};
+
 const shuffle = function(deck) {
 
     /* This helper takes an array (`deck`) as its only argument, and then
@@ -135,14 +165,14 @@ const tileSelector = function() {
     to generate valid boards at random. */
 
     const layout = [
-        [null, null, null, null, null, null, null, null, null],
-        [null, null, null, "northWest", false, "southWest", false],
-        [null, null, null, false, true, true, true, "southWest"],
-        [null, null, "north", true, true, true, true, false],
-        [null, null, false, true, true, true, true, true, "south"],
-        [null, null, "north", true, true, true, true, false],
-        [null, null, null, false, true, true, true, "southEast"],
-        [null, null, null,  "northEast", false,  "southEast", false],
+        [null, null, null, null, null, null, null, null, null, null],
+        [null, null, null, "northWest", false, "southWest", false, null],
+        [null, null, null, false, true, true, true, "southWest", null],
+        [null, null, "north", true, true, true, true, false, null],
+        [null, null, false, true, true, true, true, true, "south", null],
+        [null, null, "north", true, true, true, true, false, null],
+        [null, null, null, false, true, true, true, "southEast", null],
+        [null, null, null,  "northEast", false,  "southEast", false, null],
     ];
 
     let landIndex = 0;
@@ -180,19 +210,26 @@ const setup = function() {
     utils.skipHello();
 
     const app = new App({
-        width: boardWidth, height: boardHeight, backgroundColor: backgroundBlue
+        width: boardWidth,
+        height: boardHeight,
+        backgroundColor: backgroundBlue
     });
-    
+
     const board = new Container();
-    const graphics = new Graphics();
+    const units = new Container();
+    const roads = new Container();
+    const hover = new Container();
+
+    app.stage.addChild(board);
+    app.stage.addChild(units);
+    app.stage.addChild(roads);
+    app.stage.addChild(hover);
 
     app.stage.interactive = true;
     document.body.appendChild(app.view);
-    app.stage.addChild(board);
-    app.stage.addChild(graphics);
 
     // layout the background using the hextile sprites...
-    
+
     const selector = tileSelector();
 
     for (let x = 0; x < hexColumns; x++) for (let y = 0; y < hexRows; y++) {
@@ -217,34 +254,82 @@ const setup = function() {
             x: pointOffsetX + column * gridColumnWidth,
             y: pointOffsetY + row * gridRowHeight,
             type: classifyPoint(column, row),
+            state: "empty", sprite: null,
         });
     }
 
-    // setup the mouse movement handler...
+    // setup the mouse event handlers...
+
+    let onHoverSprite;
 
     app.stage.on("mousemove", function(event) {
 
         const point = snapToGrid(event.data.global, grid);
+        
+        hover.removeChild(onHoverSprite);
 
-        graphics.clear();
+        if (point === undefined || point.type !== "vertex") return;
 
-        if (point === undefined || point.type === "margin") return;
+        if (currentPlayer.mode === "settle") {
 
-        const color = {"center": 0xFF0000, "vertex": 0xFFFF00}[point.type];
+            if (point.state === "empty") {
 
-        graphics.beginFill(color);
-        graphics.lineStyle(2, black);
-        graphics.drawRect(point.x - 4, point.y - 4, 8, 8);
+                const name = currentPlayer.color + "Fort";
+
+                onHoverSprite = blit(name, point.x - 32, point.y - 32, hover);
+
+            } else if (point.state === "fort") {
+
+                onHoverSprite = blit("tower", point.x - 5, point.y - 5, hover);
+            }
+        }
+    });
+
+    app.stage.on("mouseup", function(event) {
+
+        let sprite;
+
+        const point = snapToGrid(event.data.global, grid);
+
+        if (point === undefined || point.type !== "vertex") return;
+
+        if (currentPlayer.mode === "settle") {
+
+            if (point.state === "empty") {
+
+                const name = currentPlayer.color + "Fort";
+
+                point.sprite = blit(name, point.x - 32, point.y - 32, units);
+                point.state = "fort";
+
+            } else if (point.state === "fort") {
+
+                point.sprite = blit("tower", point.x - 5, point.y - 5, units);
+                point.state = "tower";
+
+            } else return;
+
+            currentPlayer.mode = "default";
+            hover.removeChild(onHoverSprite);
+        }
     });
 };
 
 const tileData = [
+
+    {name: "tower", url: "/static/sprites/units/tower.png"},
+
+    {name: "redFort", url: "/static/sprites/units/red/fort.png"},
+    {name: "yellowFort", url: "/static/sprites/units/yellow/fort.png"},
+    {name: "greenFort", url: "/static/sprites/units/green/fort.png"},
+    {name: "blueFort", url: "/static/sprites/units/blue/fort.png"},
+
     {name: "fieldTile", url: "/static/sprites/tiles/land/field.png"},
     {name: "forestTile", url: "/static/sprites/tiles/land/forest.png"},
     {name: "desertTile", url: "/static/sprites/tiles/land/desert.png"},
-    {name: "hillsTile", url: "/static/sprites/tiles/land/hills.png"},
     {name: "mountainTile", url: "/static/sprites/tiles/land/mountain.png"},
     {name: "pastureTile", url: "/static/sprites/tiles/land/pasture.png"},
+    {name: "hillsTile", url: "/static/sprites/tiles/land/hills.png"},
     {name: "waterTile", url: "/static/sprites/tiles/land/water.png"},
     {name: "nullTile", url: "/static/sprites/tiles/land/null.png"},
 
@@ -333,5 +418,26 @@ const tileData = [
     {name: "southWestPortOpenTile", url: "/static/sprites/tiles/ports/south_west/open.png"},    
 
 ];
+
+// START TEST CODE
+
+addEventListener("keydown", function(event) {
+
+    if (event.key === "Enter") currentPlayer.mode = "settle";
+    else if (["1", "2", "3", "4"].includes(event.key)) {
+
+        currentPlayer.mode = "initial";
+        currentPlayer = players[parseInt(event.key) - 1];
+    }
+});
+
+const players = [
+    {color: "red", mode: "default"}, {color: "yellow", mode: "default"},
+    {color: "green", mode: "default"}, {color: "blue", mode: "default"},
+];
+
+let currentPlayer = players[0];
+
+// END TEST CODE
 
 loader.add(tileData).load(setup);
