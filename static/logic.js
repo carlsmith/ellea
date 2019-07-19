@@ -317,12 +317,12 @@ const setup = function() {
 
 const tileData = [
 
-    {name: "tower", url: "/static/sprites/units/tower.png"},
+    {name: "tower", url: "/static/sprites/forts/tower.png"},
 
-    {name: "redFort", url: "/static/sprites/units/red/fort.png"},
-    {name: "yellowFort", url: "/static/sprites/units/yellow/fort.png"},
-    {name: "greenFort", url: "/static/sprites/units/green/fort.png"},
-    {name: "blueFort", url: "/static/sprites/units/blue/fort.png"},
+    {name: "redFort", url: "/static/sprites/forts/red.png"},
+    {name: "yellowFort", url: "/static/sprites/forts/yellow.png"},
+    {name: "greenFort", url: "/static/sprites/forts/green.png"},
+    {name: "blueFort", url: "/static/sprites/forts/blue.png"},
 
     {name: "fieldTile", url: "/static/sprites/tiles/land/field.png"},
     {name: "forestTile", url: "/static/sprites/tiles/land/forest.png"},
