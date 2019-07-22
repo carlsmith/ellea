@@ -1,3 +1,5 @@
+let longestWall = 0;
+
 const hexColumns = 22;
 const hexRows = 11;
 const hexOffsetX = 64;
@@ -19,9 +21,11 @@ const pointOffsetY = 258;
 const gridColumnWidth = 32;
 const gridRowHeight = 55.5;
 
-const red = 0xFF0000;
+const red = 0xFF5050;
+const yellow = 0xFFFF50;
+const green = 0x50FF50;
+const blue = 0x50AAFF;
 const black = 0x000000;
-const yellow = 0xFFFF00;
 const backgroundBlue = 0x222233;
 
 const utils = PIXI.utils;
@@ -54,11 +58,11 @@ const gridColumnBounds = [
     {lower:3, upper: 7}, {lower:2, upper: 8},  {lower:3, upper: 7},
 ];
 
-const put = console.log;
+const square = (x) => x * x;
 
-const square = x => x * x;
+const [put, int] = [console.log, parseInt];
 
-const {floor, random} = Math;
+const {floor, random, max} = Math;
 
 const [squareRoot, absolute] = [Math.sqrt, Math.abs];
 
@@ -95,19 +99,25 @@ const blit = function(name, x, y, layer) {
     return sprite;
 };
 
-const plot = function(start, end, color, layer) {
+const join = function(start, end, color, layer) {
 
     /* This helper takes two `grid` points (the `start` and `end` points of
     a line), a (hexidecimal RGB) `color` and a `layer` (a `PIXI.Container`).
-    It draws a line from the `start` point to the `end` point, in the given
-    color, to the given `layer`, then returns `undefined`. */
+    It draws a 2px line from the `start` point to the `end` point, in the
+    given color, to the given `layer`, then returns `undefined`. */
 
-    const line = new Graphics();
+    const graphics = new Graphics();
+    const vector = {x: end.x - start.x, y: end.y - start.y};
+    const radius = 1;
 
-    layer.addChild(line);
-    line.position.set(start.x, start.y);
-    line.lineStyle(4, color)
-    line.moveTo(0, 0).lineTo(end.x - start.x, end.y - start.y);
+    layer.addChild(graphics);
+
+    graphics.position.set(start.x, start.y);
+    graphics.beginFill(color);
+    graphics.lineStyle(5, color);
+    graphics.moveTo(0, 0).lineTo(vector.x, vector.y);
+    graphics.drawCircle(0, 0, radius).drawCircle(vector.x, vector.y, radius);
+    graphics.endFill();
 };
 
 const shuffle = function(deck) {
@@ -203,6 +213,63 @@ const tileSelector = function() {
     };
 };
 
+const updateLongestWall = function(point) {
+
+    // const visit = function(point, visited) {
+
+    //     let bestLine, bestFork, bestLineA, bestForkA, bestLineB, bestForkB;
+
+    //     const isUnvisited = (point) => ! visited.includes(point);
+
+    //     const unvisited = point.connections.filter(isUnvisited);
+
+    //     visited.push(point);
+
+    //     if (unvisited.length === 0) { put("end", point); return [1, 0] };
+
+    //     if (unvisited.length === 1) {
+
+    //         put("stage", point);
+    //         [bestLine, bestFork] = visit(unvisited[0], visited);
+    //         return [bestLine + 1, bestFork];
+    //     }
+
+    //     put("fork", point);
+    //     [bestLineA, bestForkA] = visit(unvisited[0], visited);
+    //     [bestLineB, bestForkB] = visit(unvisited[1], visited);
+
+    //     bestLine = max(bestLineA, bestLineB);
+    //     bestFork = bestForkA + bestForkB;
+
+    //     if (bestLineA + bestLineB > bestFork) bestFork = bestLineA + bestLineB;
+
+    //     return [bestLine + 1, bestFork];
+    // };
+
+    // longestWall = max(longestWall, max(...visit(point, [])));
+
+    const types = ["impossible", "terminal", "stage", "junction"];
+
+    const visit = function(point, visited) {
+
+        visited.push(point);
+
+        if (point.owner !== undefined && point.owner !== player) {
+
+            put(point.column, point.row, "break");
+
+        } else put(point.column, point.row, types[point.connections.length]);
+
+        for (let connection of point.connections) {
+
+            if (!visited.includes(connection)) visit(connection, visited);
+        }
+    };
+
+    put("traversal...");
+    visit(point, []);
+};
+
 const setup = function() {
 
     // initialize the pixi application and bolt everything together...
@@ -217,12 +284,12 @@ const setup = function() {
 
     const board = new Container();
     const units = new Container();
-    const roads = new Container();
+    const walls = new Container();
     const hover = new Container();
 
     app.stage.addChild(board);
+    app.stage.addChild(walls);
     app.stage.addChild(units);
-    app.stage.addChild(roads);
     app.stage.addChild(hover);
 
     app.stage.interactive = true;
@@ -254,7 +321,8 @@ const setup = function() {
             x: pointOffsetX + column * gridColumnWidth,
             y: pointOffsetY + row * gridRowHeight,
             type: classifyPoint(column, row),
-            state: "empty", sprite: null,
+            state: "empty", connections: [],
+            owner: undefined, column, row,
         });
     }
 
@@ -270,11 +338,11 @@ const setup = function() {
 
         if (point === undefined || point.type !== "vertex") return;
 
-        if (currentPlayer.mode === "settle") {
+        if (player.mode === "settle") {
 
             if (point.state === "empty") {
 
-                const name = currentPlayer.color + "Fort";
+                const name = player.color + "Fort";
 
                 onHoverSprite = blit(name, point.x - 32, point.y - 32, hover);
 
@@ -293,24 +361,43 @@ const setup = function() {
 
         if (point === undefined || point.type !== "vertex") return;
 
-        if (currentPlayer.mode === "settle") {
+        if (player.mode === "settle") {
 
             if (point.state === "empty") {
 
-                const name = currentPlayer.color + "Fort";
+                const name = player.color + "Fort";
 
-                point.sprite = blit(name, point.x - 32, point.y - 32, units);
+                blit(name, point.x - 32, point.y - 32, units);
+                point.owner = player;
                 point.state = "fort";
 
             } else if (point.state === "fort") {
 
-                point.sprite = blit("tower", point.x - 5, point.y - 5, units);
+                blit("tower", point.x - 5, point.y - 5, units);
                 point.state = "tower";
 
             } else return;
 
-            currentPlayer.mode = "default";
+            player.mode = "default";
             hover.removeChild(onHoverSprite);
+
+        } else if (player.mode === "startingWall") {
+
+            player.startingPoint = point;
+            player.mode = "endingWall";
+        
+        } else if (player.mode === "endingWall") {
+
+            if (int(distance(player.startingPoint, point)) !== 64) return;
+
+            player.startingPoint.connections.push(point);
+            point.connections.push(player.startingPoint);
+
+            join(player.startingPoint, point, player.rgb, walls);
+
+            player.startingPoint = null;
+            player.mode = "startingWall"; // TODO: put back to `initial`
+            updateLongestWall(point);
         }
     });
 };
@@ -423,20 +510,23 @@ const tileData = [
 
 addEventListener("keydown", function(event) {
 
-    if (event.key === "Enter") currentPlayer.mode = "settle";
+    if (event.key === "Enter") player.mode = "settle";
+    else if (event.key === "Backspace") player.mode = "startingWall";
     else if (["1", "2", "3", "4"].includes(event.key)) {
 
-        currentPlayer.mode = "initial";
-        currentPlayer = players[parseInt(event.key) - 1];
+        player.mode = "initial";
+        player = players[int(event.key) - 1];
     }
 });
 
 const players = [
-    {color: "red", mode: "default"}, {color: "yellow", mode: "default"},
-    {color: "green", mode: "default"}, {color: "blue", mode: "default"},
+    {color: "red", rgb: red, mode: "startingWall", startingPoint: null},
+    {color: "yellow", rgb:  yellow, mode: "startingWall", startingPoint: null},
+    {color: "green", rgb:  green, mode: "startingWall", startingPoint: null},
+    {color: "blue", rgb:  blue, mode: "startingWall", startingPoint: null},
 ];
 
-let currentPlayer = players[0];
+let player = players[0];
 
 // END TEST CODE
 
