@@ -1,4 +1,7 @@
-let longestWall = 0;
+let topScore = 0;
+let topPlayer = undefined;
+let player, playerIndex = -1;
+let onHoverSprites = [];
 
 const hexColumns = 22;
 const hexRows = 11;
@@ -21,11 +24,16 @@ const pointOffsetY = 258;
 const gridColumnWidth = 32;
 const gridRowHeight = 55.5;
 
-const red = 0xFF5050;
-const yellow = 0xFFFF50;
-const green = 0x50FF50;
-const blue = 0x50AAFF;
+const red = 0xFF5555;
+const yellow = 0xFFFF55;
+const green = 0x55FF55;
+const blue = 0x55AAFF;
+const darkRed = 0x440000;
+const darkYellow = 0x444400;
+const darkGreen = 0x005500;
+const darkBlue = 0x004488;
 const black = 0x000000;
+const white = 0xFFFFFF;
 const backgroundBlue = 0x222233;
 
 const utils = PIXI.utils;
@@ -39,32 +47,52 @@ const FastContainer = PIXI.particles.ParticleContainer;
 const TextureCache = PIXI.utils.TextureCache;
 const resources = PIXI.loader.resources;
 
-const landTiles = [
-    "fieldTile", "fieldTile", "fieldTile", "fieldTile",
-    "forestTile", "forestTile", "forestTile", "forestTile",
-    "pastureTile", "pastureTile", "pastureTile", "pastureTile",
-    "mountainTile", "mountainTile", "mountainTile",
-    "hillsTile", "hillsTile", "hillsTile", "desertTile"
-];
-
-const portTiles = [
-    "Bricks", "Iron", "Wool", "Wood", "Grain",
-    "Open", "Open", "Open", "Open"
-];
-
-const gridColumnBounds = [
-    {lower:1, upper: 9}, {lower:0, upper: 10}, {lower:1, upper: 9},
-    {lower:2, upper: 8}, {lower:1, upper: 9},  {lower:2, upper: 8},
-    {lower:3, upper: 7}, {lower:2, upper: 8},  {lower:3, upper: 7},
-];
+const not = (x) => ! x;
 
 const square = (x) => x * x;
+
+const clear = () => onHoverSprites.forEach(child => hover.removeChild(child));
 
 const [put, int] = [console.log, parseInt];
 
 const {floor, random, max} = Math;
 
 const [squareRoot, absolute] = [Math.sqrt, Math.abs];
+
+const Player = function(colorName, lightColor, darkColor) { return {
+    state: "initial", startingPoint: null, startingMark: null,
+    score: 0, forts: 0, walls: 0, harbors: 0, ports: 0, opens: 0,
+    colorName, lightColor, darkColor,
+}};
+
+const nextPlayer = function() {
+
+    /* This helper increments the current `player` (and `playerIndex`). */
+
+    playerIndex = (playerIndex + 1) % 4;
+    player = players[playerIndex];
+    alertPlayer();
+};
+
+const previousPlayer = function() {
+
+    /* This helper dencrements the current `player` (and `playerIndex`). */
+
+    playerIndex = playerIndex ? playerIndex - 1 : 3;
+    player = players[playerIndex];
+    alertPlayer();
+};
+
+const alertPlayer = function() {
+
+    let message;
+
+    if (player.forts === 0) message = "place your first fort";
+    else if (player.forts === 1) message = "place your second fort";
+    else message = "it is your turn";
+
+    put(player.colorName, message);
+};
 
 const classifyPoint= function(column, row) {
 
@@ -99,25 +127,55 @@ const blit = function(name, x, y, layer) {
     return sprite;
 };
 
-const join = function(start, end, color, layer) {
+const mark = function(point, lineColor, fillColor, layer=marks) {
 
-    /* This helper takes two `grid` points (the `start` and `end` points of
-    a line), a (hexidecimal RGB) `color` and a `layer` (a `PIXI.Container`).
-    It draws a 2px line from the `start` point to the `end` point, in the
-    given color, to the given `layer`, then returns `undefined`. */
+    /* This helper takes a `point` object and two (hexidecimal RGB) colors
+    (`lineColor` and `fillColor`). It draws a dot at the given point. The
+    function returns the `Graphics` object. */
+
+    const graphics = new Graphics();
+
+    graphics.beginFill(fillColor).lineStyle(5, lineColor);
+    graphics.drawCircle(point.x, point.y, 8);
+    layer.addChild(graphics);
+
+    return graphics;
+};
+
+const join = function(start, end, lightColor, darkColor, layer=walls) {
+
+    /* This helper takes two `grid` points (the `start` and `end` points of a
+    line) and two (hexidecimal RGB) colors (`lightColor` and `darkColor`). It
+    draws a wall from the `start` to the `end` point, in the light color. It
+    finally marks both points, before returning an array containing three
+    `Graphics` objects (the line, the start mark and the end mark). */
 
     const graphics = new Graphics();
     const vector = {x: end.x - start.x, y: end.y - start.y};
-    const radius = 1;
-
-    layer.addChild(graphics);
+    const output = [graphics];
 
     graphics.position.set(start.x, start.y);
-    graphics.beginFill(color);
-    graphics.lineStyle(5, color);
-    graphics.moveTo(0, 0).lineTo(vector.x, vector.y);
-    graphics.drawCircle(0, 0, radius).drawCircle(vector.x, vector.y, radius);
-    graphics.endFill();
+    graphics.lineStyle(6, lightColor).moveTo(0, 0).lineTo(vector.x, vector.y);
+
+    layer.addChild(graphics);
+    output.push(mark(start, lightColor, darkColor, layer));
+    output.push(mark(end, lightColor, darkColor, layer));
+
+    return output;
+};
+
+const cannotJoin = function(start, end) {
+
+    return start.connections.includes(end) || int(distance(start, end)) !== 64;
+};
+
+const cannotBuild = function(player, point) {
+
+    if (player.state === "initial" && point.owner === undefined) return false;
+
+    if (not(point.empty)) return true;
+
+    return point.owner && point.owner === player ? false : true;
 };
 
 const shuffle = function(deck) {
@@ -125,7 +183,7 @@ const shuffle = function(deck) {
     /* This helper takes an array (`deck`) as its only argument, and then
     shuffles its items (randomly mutating the array in place). The return
     value is always `undefined`. This is used for shuffling the two decks
-    of tiles (`landTiles` and `portTiles`) before laying out a new board. 
+    of tiles (`landTiles` and `portTiles`) before laying out a new board.
 
     Algorithm: `stackoverflow.com/a/12646864/1253428`. */
 
@@ -213,63 +271,6 @@ const tileSelector = function() {
     };
 };
 
-const updateLongestWall = function(point) {
-
-    // const visit = function(point, visited) {
-
-    //     let bestLine, bestFork, bestLineA, bestForkA, bestLineB, bestForkB;
-
-    //     const isUnvisited = (point) => ! visited.includes(point);
-
-    //     const unvisited = point.connections.filter(isUnvisited);
-
-    //     visited.push(point);
-
-    //     if (unvisited.length === 0) { put("end", point); return [1, 0] };
-
-    //     if (unvisited.length === 1) {
-
-    //         put("stage", point);
-    //         [bestLine, bestFork] = visit(unvisited[0], visited);
-    //         return [bestLine + 1, bestFork];
-    //     }
-
-    //     put("fork", point);
-    //     [bestLineA, bestForkA] = visit(unvisited[0], visited);
-    //     [bestLineB, bestForkB] = visit(unvisited[1], visited);
-
-    //     bestLine = max(bestLineA, bestLineB);
-    //     bestFork = bestForkA + bestForkB;
-
-    //     if (bestLineA + bestLineB > bestFork) bestFork = bestLineA + bestLineB;
-
-    //     return [bestLine + 1, bestFork];
-    // };
-
-    // longestWall = max(longestWall, max(...visit(point, [])));
-
-    const types = ["impossible", "terminal", "stage", "junction"];
-
-    const visit = function(point, visited) {
-
-        visited.push(point);
-
-        if (point.owner !== undefined && point.owner !== player) {
-
-            put(point.column, point.row, "break");
-
-        } else put(point.column, point.row, types[point.connections.length]);
-
-        for (let connection of point.connections) {
-
-            if (!visited.includes(connection)) visit(connection, visited);
-        }
-    };
-
-    put("traversal...");
-    visit(point, []);
-};
-
 const setup = function() {
 
     // initialize the pixi application and bolt everything together...
@@ -277,21 +278,19 @@ const setup = function() {
     utils.skipHello();
 
     const app = new App({
+        antialias: true,
         width: boardWidth,
         height: boardHeight,
         backgroundColor: backgroundBlue
     });
 
-    const board = new Container();
-    const units = new Container();
-    const walls = new Container();
-    const hover = new Container();
-
     app.stage.addChild(board);
     app.stage.addChild(walls);
+    app.stage.addChild(marks);
     app.stage.addChild(units);
     app.stage.addChild(hover);
 
+    nextPlayer();
     app.stage.interactive = true;
     document.body.appendChild(app.view);
 
@@ -318,38 +317,44 @@ const setup = function() {
         grid.push([]);
 
         for (let row = 0; row < gridRows; row++) grid[column].push({
+            owner: undefined,  empty: true, connections: [],
             x: pointOffsetX + column * gridColumnWidth,
             y: pointOffsetY + row * gridRowHeight,
             type: classifyPoint(column, row),
-            state: "empty", connections: [],
-            owner: undefined, column, row,
+            column, row,
         });
     }
 
     // setup the mouse event handlers...
 
-    let onHoverSprite;
-
     app.stage.on("mousemove", function(event) {
 
         const point = snapToGrid(event.data.global, grid);
-        
-        hover.removeChild(onHoverSprite);
+
+        clear();
 
         if (point === undefined || point.type !== "vertex") return;
 
-        if (player.mode === "settle") {
+        if (player.state === "buildingFort" || player.state === "initial") {
 
-            if (point.state === "empty") {
+            if (cannotBuild(player, point)) return;
 
-                const name = player.color + "Fort";
+            const name = player.colorName + "Fort";
 
-                onHoverSprite = blit(name, point.x - 32, point.y - 32, hover);
+            onHoverSprites.push(blit(name, point.x - 32, point.y - 32, hover));
 
-            } else if (point.state === "fort") {
+        } else if (player.state === "startingWall" && point.owner === player) {
 
-                onHoverSprite = blit("tower", point.x - 5, point.y - 5, hover);
-            }
+            onHoverSprites.push(mark(point, player.lightColor, white, hover));
+
+        } else if (player.state === "endingWall") {
+
+            const startingPoint = player.startingPoint;
+
+            if (cannotJoin(startingPoint, point)) return;
+
+            join(startingPoint, point, player.lightColor, white, hover)
+            .forEach(sprite => onHoverSprites.push(sprite));
         }
     });
 
@@ -361,50 +366,113 @@ const setup = function() {
 
         if (point === undefined || point.type !== "vertex") return;
 
-        if (player.mode === "settle") {
+        if (player.state === "buildingFort" || player.state === "initial") {
 
-            if (point.state === "empty") {
+            if (cannotBuild(player, point)) return;
 
-                const name = player.color + "Fort";
+            clear();
+            blit(player.colorName + "Fort", point.x - 32, point.y - 32, units);
 
-                blit(name, point.x - 32, point.y - 32, units);
-                point.owner = player;
-                point.state = "fort";
+            point.owner = player;
+            point.empty = false;
 
-            } else if (point.state === "fort") {
+            player.score += 2;
+            player.forts += 1;
 
-                blit("tower", point.x - 5, point.y - 5, units);
-                point.state = "tower";
+            if (player.state === "initial") {
 
-            } else return;
+                if (player.forts === 1) {
 
-            player.mode = "default";
-            hover.removeChild(onHoverSprite);
+                    if (playerIndex !== 3) nextPlayer();
+                    else alertPlayer();
 
-        } else if (player.mode === "startingWall") {
+                } else { // knowing that the player has two forts...
 
+                    player.state = "default";
+
+                    if (playerIndex === 0) alertPlayer();
+                    else previousPlayer();
+                }
+
+            } else player.state = "default";
+
+        } else if (player.state === "startingWall" && point.owner === player) {
+
+            player.startingMark = mark(point, player.lightColor, white, hover);
+            onHoverSprites.push(player.startingMark);
             player.startingPoint = point;
-            player.mode = "endingWall";
-        
-        } else if (player.mode === "endingWall") {
+            player.state = "endingWall";
 
-            if (int(distance(player.startingPoint, point)) !== 64) return;
+        } else if (player.state === "endingWall") {
 
-            player.startingPoint.connections.push(point);
-            point.connections.push(player.startingPoint);
+            const startingPoint = player.startingPoint;
 
-            join(player.startingPoint, point, player.rgb, walls);
+            if (cannotJoin(startingPoint, point)) return;
+
+            // update the graphics...
+
+            clear();
+            join(startingPoint, point, player.lightColor, player.darkColor);
+
+            // update the connections...
+
+            startingPoint.connections.push(point);
+            point.connections.push(startingPoint);
+
+            // update point ownership...
+
+            startingPoint.owner = player;
+            point.owner = player;
+
+            // update player state...
 
             player.startingPoint = null;
-            player.mode = "startingWall"; // TODO: put back to `initial`
-            updateLongestWall(point);
+            player.startingMark = null;
+            player.state = "default";
+            player.score += 1;
+            player.walls += 1;
         }
+
+        // players.forEach(function(player) { if (player.score > topScore) {
+        //     [topPlayer, topScore] = [player, player.score];
+        // }});
+
     });
 };
 
-const tileData = [
 
-    {name: "tower", url: "/static/sprites/forts/tower.png"},
+const board = new Container();
+const units = new Container();
+const walls = new Container();
+const marks = new Container();
+const hover = new Container();
+
+const landTiles = [
+    "fieldTile", "fieldTile", "fieldTile", "fieldTile", "fieldTile",
+    "hillsTile", "hillsTile", "hillsTile", "hillsTile",
+    "mountainTile", "mountainTile", "mountainTile",
+    "pastureTile", "pastureTile", "pastureTile",
+    "forestTile", "forestTile", "forestTile",
+    "desertTile",
+];
+
+const portTiles = [
+    "Bricks", "Iron", "Wool", "Wood", "Grain",
+    "Open", "Open", "Open", "Open"
+];
+
+const gridColumnBounds = [
+    {lower:1, upper: 9}, {lower:0, upper: 10}, {lower:1, upper: 9},
+    {lower:2, upper: 8}, {lower:1, upper: 9},  {lower:2, upper: 8},
+    {lower:3, upper: 7}, {lower:2, upper: 8},  {lower:3, upper: 7},
+];
+
+const players = [
+    Player("red", red, darkRed), Player("yellow", yellow, darkYellow),
+    Player("green", green, darkGreen), Player("blue", blue, darkBlue),
+];
+
+const tileData = [
 
     {name: "redFort", url: "/static/sprites/forts/red.png"},
     {name: "yellowFort", url: "/static/sprites/forts/yellow.png"},
@@ -439,7 +507,7 @@ const tileData = [
     {name: "northWestHarborWoodTile", url: "/static/sprites/tiles/harbors/north_west/wood.png"},
     {name: "northWestHarborGrainTile", url: "/static/sprites/tiles/harbors/north_west/grain.png"},
     {name: "northWestHarborIronTile", url: "/static/sprites/tiles/harbors/north_west/iron.png"},
-    {name: "northWestHarborOpenTile", url: "/static/sprites/tiles/harbors/north_west/open.png"},    
+    {name: "northWestHarborOpenTile", url: "/static/sprites/tiles/harbors/north_west/open.png"},
 
     {name: "southHarborBricksTile", url: "/static/sprites/tiles/harbors/south/bricks.png"},
     {name: "southHarborWoolTile", url: "/static/sprites/tiles/harbors/south/wool.png"},
@@ -460,7 +528,7 @@ const tileData = [
     {name: "southWestHarborWoodTile", url: "/static/sprites/tiles/harbors/south_west/wood.png"},
     {name: "southWestHarborGrainTile", url: "/static/sprites/tiles/harbors/south_west/grain.png"},
     {name: "southWestHarborIronTile", url: "/static/sprites/tiles/harbors/south_west/iron.png"},
-    {name: "southWestHarborOpenTile", url: "/static/sprites/tiles/harbors/south_west/open.png"},    
+    {name: "southWestHarborOpenTile", url: "/static/sprites/tiles/harbors/south_west/open.png"},
 
     {name: "northPortBricksTile", url: "/static/sprites/tiles/ports/north/bricks.png"},
     {name: "northPortWoolTile", url: "/static/sprites/tiles/ports/north/wool.png"},
@@ -481,7 +549,7 @@ const tileData = [
     {name: "northWestPortWoodTile", url: "/static/sprites/tiles/ports/north_west/wood.png"},
     {name: "northWestPortGrainTile", url: "/static/sprites/tiles/ports/north_west/grain.png"},
     {name: "northWestPortIronTile", url: "/static/sprites/tiles/ports/north_west/iron.png"},
-    {name: "northWestPortOpenTile", url: "/static/sprites/tiles/ports/north_west/open.png"},    
+    {name: "northWestPortOpenTile", url: "/static/sprites/tiles/ports/north_west/open.png"},
 
     {name: "southPortBricksTile", url: "/static/sprites/tiles/ports/south/bricks.png"},
     {name: "southPortWoolTile", url: "/static/sprites/tiles/ports/south/wool.png"},
@@ -502,7 +570,7 @@ const tileData = [
     {name: "southWestPortWoodTile", url: "/static/sprites/tiles/ports/south_west/wood.png"},
     {name: "southWestPortGrainTile", url: "/static/sprites/tiles/ports/south_west/grain.png"},
     {name: "southWestPortIronTile", url: "/static/sprites/tiles/ports/south_west/iron.png"},
-    {name: "southWestPortOpenTile", url: "/static/sprites/tiles/ports/south_west/open.png"},    
+    {name: "southWestPortOpenTile", url: "/static/sprites/tiles/ports/south_west/open.png"},
 
 ];
 
@@ -510,23 +578,29 @@ const tileData = [
 
 addEventListener("keydown", function(event) {
 
-    if (event.key === "Enter") player.mode = "settle";
-    else if (event.key === "Backspace") player.mode = "startingWall";
-    else if (["1", "2", "3", "4"].includes(event.key)) {
+    if (event.key === "Tab") { // advance to next player
 
-        player.mode = "initial";
+        event.preventDefault();
+        nextPlayer();
+
+    } else if (event.key === "Shift") { // placing harbor...
+
+        player.state = "placingHarbor";
+
+    } else if (event.key === "Enter") { // placing fort...
+
+        player.state = "buildingFort";
+
+    } else if (event.key === "Backspace") { // start a wall
+
+        player.state = "startingWall";
+
+    } else if (["1", "2", "3", "4"].includes(event.key)) { // change player
+
+        if (player.state !== "initial") player.state = "default";
         player = players[int(event.key) - 1];
     }
 });
-
-const players = [
-    {color: "red", rgb: red, mode: "startingWall", startingPoint: null},
-    {color: "yellow", rgb:  yellow, mode: "startingWall", startingPoint: null},
-    {color: "green", rgb:  green, mode: "startingWall", startingPoint: null},
-    {color: "blue", rgb:  blue, mode: "startingWall", startingPoint: null},
-];
-
-let player = players[0];
 
 // END TEST CODE
 
